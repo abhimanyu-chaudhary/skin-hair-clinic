@@ -1,0 +1,421 @@
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 1. Core Users and Roles
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  role         String    // "SUPER_ADMIN", "STAFF", "DOCTOR", "PATIENT"
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  doctorProfile  Doctor?
+  staffProfile   Staff?
+  patientProfile Patient?
+  auditLogs      AuditLog[]
+}
+
+model Clinic {
+  id             String         @id @default(uuid())
+  name           String
+  address        String
+  contactNumber  String
+  gstNumber      String
+  logoUrl        String?
+  operatingHours String         // JSON or description
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  doctors        Doctor[]
+  staffs         Staff[]
+  appointments   Appointment[]
+  invoices       Invoice[]
+  
+  billingEntityId String?
+  billingEntity   BillingEntity? @relation(fields: [billingEntityId], references: [id])
+}
+
+model BillingEntity {
+  id            String   @id @default(uuid())
+  legalName     String
+  address       String
+  gstin         String
+  pan           String
+  invoicePrefix String   // e.g., "SHC-INV"
+  bankDetails   String
+  terms         String
+  logoUrl       String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  clinics  Clinic[]
+  invoices Invoice[]
+}
+
+model Staff {
+  id          String @id @default(uuid())
+  userId      String @unique
+  clinicId    String
+  name        String
+  mobile      String @unique
+  permissions String // JSON string array of permissions
+
+  user   User   @relation(fields: [userId], references: [id])
+  clinic Clinic @relation(fields: [clinicId], references: [id])
+}
+
+model Doctor {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  clinicId        String
+  name            String
+  gender          String
+  dob             DateTime
+  mobile          String   @unique
+  regNumber       String   // Medical license number
+  issuingCouncil  String
+  qualifications  String
+  specializations String
+  experienceYrs   Int
+  consultFee      Float
+  followUpFee     Float
+  slotDuration    Int      @default(15)
+  weeklySchedule  String   // JSON containing weekly slots
+  signatureUrl    String?  // File path/URL for signature
+  status          String   // "ACTIVE", "INACTIVE", "ON_LEAVE"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id])
+  clinic         Clinic          @relation(fields: [clinicId], references: [id])
+  appointments   Appointment[]
+  consultations  Consultation[]
+  treatmentPlans TreatmentPlan[]
+}
+
+model Patient {
+  id                String    @id @default(uuid())
+  userId            String?   @unique
+  mrn               String    @unique // Sequential medical registration number
+  name              String
+  dob               DateTime
+  gender            String
+  mobile            String    @unique
+  altMobile         String?
+  email             String?
+  address           String
+  emergencyName     String
+  emergencyMobile   String
+  bloodGroup        String?
+  allergies         String?
+  chronicConditions String?
+  currentMedications String?
+  pastTreatments    String?
+  referralSource    String
+  photoUrl          String?
+  govtIdType        String?
+  govtIdNumber      String?
+  consentRecorded   Boolean   @default(false)
+  consentTimestamp  DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  user           User?           @relation(fields: [userId], references: [id])
+  appointments   Appointment[]
+  consultations  Consultation[]
+  treatmentPlans TreatmentPlan[]
+  invoices       Invoice[]
+}
+
+// 2. Appointments and Consultations (EMR)
+model Appointment {
+  id              String   @id @default(uuid())
+  patientId       String
+  doctorId        String
+  clinicId        String
+  appointmentDate DateTime
+  type            String   // "CONSULTATION", "FOLLOW_UP", "TREATMENT", "PROCEDURE"
+  status          String   // "BOOKED", "CONFIRMED", "ARRIVED", "IN_CONSULTATION", "COMPLETED", "NO_SHOW", "CANCELLED", "RESCHEDULED"
+  queueNumber     Int?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  patient      Patient       @relation(fields: [patientId], references: [id])
+  doctor       Doctor        @relation(fields: [doctorId], references: [id])
+  clinic       Clinic        @relation(fields: [clinicId], references: [id])
+  consultation Consultation?
+}
+
+model Consultation {
+  id                  String   @id @default(uuid())
+  appointmentId       String   @unique
+  patientId           String
+  doctorId            String
+  date                DateTime @default(now())
+  chiefComplaint      String
+  duration            String
+  onsetTriggers       String?
+  medicalHistory      String   // JSON string
+  examinationFindings String   // JSON string
+  provisionalDiagnosis String
+  privateNotes        String?
+  locked              Boolean  @default(false)
+  version             Int      @default(1)
+  parentConsultId     String?
+
+  appointment    Appointment               @relation(fields: [appointmentId], references: [id])
+  patient        Patient                   @relation(fields: [patientId], references: [id])
+  doctor         Doctor                    @relation(fields: [doctorId], references: [id])
+  clinicalPhotos ClinicalPhoto[]
+  prescription   Prescription?
+  investigations DiagnosticInvestigation[]
+}
+
+model ClinicalPhoto {
+  id             String   @id @default(uuid())
+  consultationId String
+  imageUrl       String
+  tag            String
+  createdAt      DateTime @default(now())
+
+  consultation Consultation @relation(fields: [consultationId], references: [id])
+}
+
+model DiagnosticInvestigation {
+  id             String   @id @default(uuid())
+  consultationId String
+  testName       String
+  reportPdfUrl   String?
+  status         String   // "ADVISED", "COMPLETED"
+  createdAt      DateTime @default(now())
+
+  consultation Consultation @relation(fields: [consultationId], references: [id])
+}
+
+// 3. Prescriptions
+model Prescription {
+  id             String   @id @default(uuid())
+  consultationId String   @unique
+  pdfUrl         String?
+  date           DateTime @default(now())
+  followUpDays   Int?
+  createdAt      DateTime @default(now())
+
+  consultation Consultation       @relation(fields: [consultationId], references: [id])
+  items        PrescriptionItem[]
+}
+
+model PrescriptionItem {
+  id             String @id @default(uuid())
+  prescriptionId String
+  medicineName   String
+  dosage         String
+  frequency      String
+  duration       String
+  quantity       Int    @default(1)
+  route          String
+  instructions   String?
+  productId      String?
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+}
+
+// 4. Treatments & Packages
+model TreatmentCatalog {
+  id          String   @id @default(uuid())
+  name        String
+  category    String   // "HAIR", "SKIN"
+  description String?
+  basePrice   Float
+  createdAt   DateTime @default(now())
+
+  treatmentPlans TreatmentPlan[]
+}
+
+model TreatmentPlan {
+  id                 String   @id @default(uuid())
+  patientId          String
+  doctorId           String
+  treatmentCatalogId String
+  totalSessions      Int
+  totalPrice         Float
+  status             String   // "ACTIVE", "COMPLETED", "CANCELLED"
+  consentSigned      Boolean  @default(false)
+  consentName        String?
+  consentSignature   String?
+  consentTimestamp   DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  patient     Patient          @relation(fields: [patientId], references: [id])
+  doctor      Doctor           @relation(fields: [doctorId], references: [id])
+  catalogItem TreatmentCatalog @relation(fields: [treatmentCatalogId], references: [id])
+  sessions    TreatmentSession[]
+}
+
+model TreatmentSession {
+  id              String    @id @default(uuid())
+  treatmentPlanId String
+  sessionNumber   Int
+  appointmentId   String?
+  notes           String?
+  status          String    // "SCHEDULED", "COMPLETED", "MISSED"
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  treatmentPlan TreatmentPlan           @relation(fields: [treatmentPlanId], references: [id])
+  sessionPhotos TreatmentSessionPhoto[]
+}
+
+model TreatmentSessionPhoto {
+  id                 String   @id @default(uuid())
+  treatmentSessionId String
+  imageUrl           String
+  createdAt          DateTime @default(now())
+
+  treatmentSession TreatmentSession @relation(fields: [treatmentSessionId], references: [id])
+}
+
+// 5. Billing & Payments
+model Invoice {
+  id              String   @id @default(uuid())
+  billingEntityId String
+  clinicId        String
+  patientId       String
+  invoiceNumber   String   @unique
+  date            DateTime @default(now())
+  totalAmount     Float
+  taxAmount       Float
+  discountAmount  Float
+  discountReason  String?
+  status          String   // "PAID", "PARTIALLY_PAID", "UNPAID", "REFUNDED"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  billingEntity BillingEntity @relation(fields: [billingEntityId], references: [id])
+  clinic        Clinic        @relation(fields: [clinicId], references: [id])
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  items         InvoiceItem[]
+  payments      Payment[]
+}
+
+model InvoiceItem {
+  id              String  @id @default(uuid())
+  invoiceId       String
+  itemType        String  // "CONSULTATION", "PRODUCT", "TREATMENT", "DIAGNOSTIC"
+  description     String
+  quantity        Int
+  unitPrice       Float
+  taxRate         Float
+  discountAmount  Float   @default(0)
+  productId       String?
+  treatmentPlanId String?
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+model Payment {
+  id            String   @id @default(uuid())
+  invoiceId     String
+  amount        Float
+  paymentMode   String   // "CASH", "CARD", "UPI", "BANK_TRANSFER", "WALLET"
+  paymentType   String   // "ADVANCE", "INSTALLMENT", "FULL"
+  transactionId String?
+  createdAt     DateTime @default(now())
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+// 6. Inventory & Stock Management
+model Product {
+  id            String   @id @default(uuid())
+  sku           String   @unique
+  name          String
+  category      String   // "MEDICINE", "RETAIL_PRODUCT", "CONSUMABLE"
+  unit          String
+  purchasePrice Float
+  sellingPrice  Float
+  taxRate       Float
+  reorderLevel  Int      @default(10)
+  supplier      String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  batches        ProductBatch[]
+  stockMovements StockMovement[]
+}
+
+model ProductBatch {
+  id           String   @id @default(uuid())
+  productId    String
+  batchNumber  String
+  expiryDate   DateTime
+  quantity     Int
+  purchaseCost Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product        Product         @relation(fields: [productId], references: [id])
+  purchases      Purchase[]
+  stockMovements StockMovement[]
+}
+
+model Purchase {
+  id            String   @id @default(uuid())
+  supplier      String
+  invoiceNumber String
+  batchId       String
+  quantity      Int
+  cost          Float
+  createdAt     DateTime @default(now())
+
+  batch ProductBatch @relation(fields: [batchId], references: [id])
+}
+
+model StockMovement {
+  id        String   @id @default(uuid())
+  productId String
+  batchId   String
+  quantity  Int
+  type      String   // "PURCHASE", "SALE", "ADJUSTMENT", "CONSUMPTION"
+  reason    String?
+  userId    String
+  createdAt DateTime @default(now())
+
+  product Product      @relation(fields: [productId], references: [id])
+  batch   ProductBatch @relation(fields: [batchId], references: [id])
+}
+
+// 7. System Utilities: Notifications & Logs
+model Notification {
+  id            String    @id @default(uuid())
+  recipientId   String?
+  email         String?
+  channel       String
+  templateEvent String
+  message       String
+  status        String
+  sentAt        DateTime?
+  createdAt     DateTime  @default(now())
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String
+  tableName   String
+  recordId    String
+  action      String
+  beforeState String?
+  afterState  String?
+  timestamp   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+}

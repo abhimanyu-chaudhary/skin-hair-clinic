@@ -1,0 +1,14 @@
+{
+  "businessName": "Skin Care Center Kalimati",
+  "taxType": "VAT",
+  "taxRate": 13,
+  "currency": "NPR",
+  "smsGateway": "Sparrow SMS",
+  "smsApiKey": "sparrow-sms-demo-key",
+  "smsSenderId": "SkinClinic",
+  "whatsappEnabled": true,
+  "telemedicineEnabled": true,
+  "abhaEnabled": false,
+  "citizenshipIdRequired": true,
+  "irdApprovedBilling": true
+}
