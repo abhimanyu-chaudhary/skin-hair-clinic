@@ -32,8 +32,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (!hasPermission(session.role, "manage_masters")) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    let isAuthorized = false;
+    if (session.role === "SUPER_ADMIN") {
+      isAuthorized = true;
+    } else if (session.role === "STAFF") {
+      const staff = await prisma.staff.findUnique({
+        where: { userId: session.userId },
+      });
+      if (staff) {
+        try {
+          const perms = JSON.parse(staff.permissions);
+          if (perms.includes("add_treatment_catalog")) {
+            isAuthorized = true;
+          }
+        } catch {}
+      }
+    }
+
+    if (!isAuthorized) {
+      return NextResponse.json({ error: "Forbidden: requires add_treatment_catalog permission" }, { status: 403 });
     }
 
     const { name, category, description, basePrice } = await request.json();

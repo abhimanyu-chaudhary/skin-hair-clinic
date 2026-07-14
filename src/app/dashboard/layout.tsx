@@ -17,6 +17,7 @@ import {
   Building,
   Sparkles,
   ShieldCheck,
+  Lock,
 } from "lucide-react";
 
 export default async function DashboardLayout({
@@ -41,6 +42,7 @@ export default async function DashboardLayout({
           { href: "/dashboard/admin?tab=staff", label: "Manage Staff", icon: User },
           { href: "/dashboard/admin?tab=masters", label: "Masters Setup", icon: Layers },
           { href: "/dashboard/admin?tab=settings", label: "Global Settings", icon: ShieldCheck },
+          { href: "/dashboard/admin?tab=security", label: "Security Settings", icon: Lock },
         ];
       case "STAFF":
         return [

@@ -10,5 +10,6 @@
   "telemedicineEnabled": true,
   "abhaEnabled": false,
   "citizenshipIdRequired": true,
-  "irdApprovedBilling": true
+  "irdApprovedBilling": true,
+  "profilePassword": "admin123"
 }

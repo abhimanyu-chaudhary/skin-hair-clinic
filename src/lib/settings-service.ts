@@ -16,6 +16,7 @@ export interface GlobalSettings {
   abhaEnabled: boolean;
   citizenshipIdRequired: boolean;
   irdApprovedBilling: boolean;
+  profilePassword?: string;
 }
 
 const DEFAULT_SETTINGS: GlobalSettings = {
@@ -31,6 +32,7 @@ const DEFAULT_SETTINGS: GlobalSettings = {
   abhaEnabled: false,
   citizenshipIdRequired: true,
   irdApprovedBilling: true,
+  profilePassword: "admin123",
 };
 
 export function getGlobalSettings(): GlobalSettings {

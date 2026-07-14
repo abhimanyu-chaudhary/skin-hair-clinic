@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, hasPermission, logAudit } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getGlobalSettings } from "@/lib/settings-service";
 
 // GET /api/billing-entities
 export async function GET() {
@@ -130,6 +131,65 @@ export async function PATCH(request: Request) {
     console.error("PATCH Billing Entity Error:", error);
     return NextResponse.json(
       { error: "Failed to update billing entity details" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const session = await getSession();
+    if (!session || session.role !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const url = new URL(request.url);
+    const id = url.searchParams.get("id");
+    const deletePassword = url.searchParams.get("password");
+
+    if (!id) {
+      return NextResponse.json({ error: "Billing Entity ID is required" }, { status: 400 });
+    }
+
+    const settings = getGlobalSettings();
+    const requiredPassword = settings.profilePassword || "admin123";
+
+    if (deletePassword !== requiredPassword) {
+      return NextResponse.json({ error: "Incorrect profile deletion password" }, { status: 403 });
+    }
+
+    const entity = await prisma.billingEntity.findUnique({
+      where: { id },
+    });
+
+    if (!entity) {
+      return NextResponse.json({ error: "Billing entity not found" }, { status: 404 });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Unlink clinics first to avoid SQLite crashes
+      await tx.clinic.updateMany({
+        where: { billingEntityId: id },
+        data: { billingEntityId: null },
+      });
+      // Delete entity
+      await tx.billingEntity.delete({ where: { id } });
+    });
+
+    await logAudit(
+      session.userId,
+      "BillingEntity",
+      id,
+      "DELETE",
+      entity,
+      null
+    );
+
+    return NextResponse.json({ success: true });
+  } catch (error: any) {
+    console.error("DELETE Billing Entity Error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete billing entity (it might be linked to active invoices)" },
       { status: 500 }
     );
   }

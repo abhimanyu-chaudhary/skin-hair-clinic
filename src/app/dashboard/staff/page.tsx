@@ -17,6 +17,7 @@ import {
   ClipboardList,
   Edit3,
   Lock,
+  Layers,
 } from "lucide-react";
 
 function StaffDashboardContent() {
@@ -28,6 +29,8 @@ function StaffDashboardContent() {
 
   // Edit Patient state
   const [isEditingPatient, setIsEditingPatient] = useState(false);
+  const [isEditingTreatment, setIsEditingTreatment] = useState<string | null>(null);
+  const [isEditingProduct, setIsEditingProduct] = useState<string | null>(null);
 
   // Global settings & User permissions loaded on mount
   const [globalSettings, setGlobalSettings] = useState<any>({
@@ -120,6 +123,27 @@ function StaffDashboardContent() {
   });
   const [inventoryAlerts, setInventoryAlerts] = useState<any>({ nearExpiry: [], lowStock: [] });
 
+  // Treatment Catalog Form State (for Staff Masters Tab)
+  const [treatmentForm, setTreatmentForm] = useState({
+    name: "",
+    category: "HAIR",
+    description: "",
+    basePrice: "3000",
+  });
+
+  // Product Form State (for Staff Masters Tab)
+  const [productForm, setProductForm] = useState({
+    sku: "",
+    name: "",
+    category: "MEDICINE",
+    unit: "Bottle",
+    purchasePrice: "200",
+    sellingPrice: "400",
+    taxRate: "13",
+    reorderLevel: "10",
+    supplier: "",
+  });
+
   // Sync activeTab with URL params
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -128,6 +152,8 @@ function StaffDashboardContent() {
       setErrorMsg("");
       setSuccessMsg("");
       setIsEditingPatient(false);
+      setIsEditingTreatment(null);
+      setIsEditingProduct(null);
       setGeneratedCredentials(null);
     }
   }, [searchParams]);
@@ -156,7 +182,6 @@ function StaffDashboardContent() {
         const meData = await resMe.json();
         setUserId(meData.user.id);
         if (meData.user.role === "SUPER_ADMIN") {
-          // Super admin bypasses all locks
           setUserPermissions([
             "register_patient",
             "book_appointment",
@@ -225,12 +250,27 @@ function StaffDashboardContent() {
     }
   };
 
-  // Check custom staff permissions
   const hasAccess = (permissionKey: string) => {
     return userPermissions.includes(permissionKey);
   };
 
-  // Helper to wrap panels with custom lock banners
+  const cancelMasterEdits = () => {
+    setIsEditingTreatment(null);
+    setIsEditingProduct(null);
+    setTreatmentForm({ name: "", category: "HAIR", description: "", basePrice: "3000" });
+    setProductForm({
+      sku: "",
+      name: "",
+      category: "MEDICINE",
+      unit: "Bottle",
+      purchasePrice: "200",
+      sellingPrice: "400",
+      taxRate: globalSettings.taxRate.toString(),
+      reorderLevel: "10",
+      supplier: "",
+    });
+  };
+
   const renderRestrictedLock = (permissionLabel: string) => {
     return (
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center shadow-lg relative overflow-hidden flex flex-col items-center justify-center min-h-[300px] animate-fadeIn">
@@ -459,7 +499,7 @@ function StaffDashboardContent() {
         description: prod.name,
         quantity: "1",
         unitPrice: prod.sellingPrice.toString(),
-        taxRate: globalSettings.taxRate.toString(), // Default from settings
+        taxRate: globalSettings.taxRate.toString(),
         discountAmount: "0",
         productId: prod.id,
       },
@@ -636,7 +676,124 @@ function StaffDashboardContent() {
     }
   };
 
+  // Staff Submit Treatment Creation / Edit
+  const handleTreatmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+    setLoading(true);
+
+    try {
+      const url = isEditingTreatment ? `/api/treatments/${isEditingTreatment}` : "/api/treatments";
+      const method = isEditingTreatment ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(treatmentForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save treatment catalog item");
+
+      setSuccessMsg(isEditingTreatment ? "Treatment catalog item updated!" : "Treatment cataloged successfully!");
+      cancelMasterEdits();
+      loadMasters();
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Staff Submit Product SKU Creation / Edit
+  const handleProductSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+    setLoading(true);
+
+    try {
+      const url = isEditingProduct ? `/api/products/${isEditingProduct}` : "/api/products";
+      const method = isEditingProduct ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(productForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save product SKU");
+
+      setSuccessMsg(isEditingProduct ? "Product SKU master details updated!" : "Product SKU logged successfully!");
+      cancelMasterEdits();
+      loadMasters();
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Staff Standard Master Deletions
+  const handleStandardDelete = async (type: string, id: string, deleteUrl: string) => {
+    if (!confirm(`Are you sure you want to delete this ${type}? This cannot be undone.`)) {
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    try {
+      const res = await fetch(deleteUrl, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Failed to delete ${type}`);
+
+      setSuccessMsg(`${type} catalog record deleted!`);
+      loadMasters();
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEditTreatment = (tr: any) => {
+    setIsEditingTreatment(tr.id);
+    setTreatmentForm({
+      name: tr.name,
+      category: tr.category,
+      description: tr.description || "",
+      basePrice: tr.basePrice.toString(),
+    });
+  };
+
+  const startEditProduct = (pr: any) => {
+    setIsEditingProduct(pr.id);
+    setProductForm({
+      sku: pr.sku,
+      name: pr.name,
+      category: pr.category,
+      unit: pr.unit,
+      purchasePrice: pr.purchasePrice.toString(),
+      sellingPrice: pr.sellingPrice.toString(),
+      taxRate: pr.taxRate.toString(),
+      reorderLevel: pr.reorderLevel.toString(),
+      supplier: pr.supplier || "",
+    });
+  };
+
   const { subTotal, totalTax, totalAmount } = calculateInvoiceTotals();
+
+  // Build Tab Items array dynamically
+  const tabsList = [
+    { id: "checkin", label: "Reception Queue", icon: ClipboardList, show: hasAccess("book_appointment") },
+    { id: "register", label: "Patient Registration", icon: UserPlus, show: hasAccess("register_patient") },
+    { id: "search", label: "Patient Directory", icon: Search, show: hasAccess("register_patient") },
+    { id: "billing", label: "Billing Ledger", icon: Receipt, show: hasAccess("generate_invoice") },
+    { id: "inventory", label: "Inventory Stock", icon: Package, show: hasAccess("manage_inventory") },
+    { id: "masters", label: "Masters Setup", icon: Layers, show: hasAccess("add_treatment_catalog") || hasAccess("add_product_master") },
+  ].filter(t => t.show);
 
   return (
     <div className="space-y-6">
@@ -720,13 +877,7 @@ function StaffDashboardContent() {
 
       {/* Tabs */}
       <div className="flex border-b border-slate-800 overflow-x-auto gap-1">
-        {[
-          { id: "checkin", label: "Check-in Queue", icon: ClipboardList, perm: "book_appointment" },
-          { id: "register", label: "Patient Registration", icon: UserPlus, perm: "register_patient" },
-          { id: "search", label: "Patient Directory", icon: Search, perm: "register_patient" },
-          { id: "billing", label: "Billing Ledger", icon: Receipt, perm: "generate_invoice" },
-          { id: "inventory", label: "Inventory Stock", icon: Package, perm: "manage_inventory" },
-        ].map((tab) => {
+        {tabsList.map((tab) => {
           const Icon = tab.icon;
           return (
             <button
@@ -765,7 +916,7 @@ function StaffDashboardContent() {
             </div>
 
             {appointments.length === 0 ? (
-              <p className="text-slate-500 text-xs py-8 text-center bg-slate-955/20 border border-dashed border-slate-800 rounded-lg">
+              <p className="text-slate-550 text-xs py-8 text-center bg-slate-955/20 border border-dashed border-slate-800 rounded-lg">
                 No appointments scheduled for today.
               </p>
             ) : (
@@ -842,33 +993,15 @@ function StaffDashboardContent() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={patientForm.name}
-                  onChange={(e) => setPatientForm({ ...patientForm, name: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-100"
-                />
+                <input type="text" required value={patientForm.name} onChange={(e) => setPatientForm({ ...patientForm, name: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Date of Birth *</label>
-                <input
-                  type="date"
-                  required
-                  value={patientForm.dob}
-                  onChange={(e) => setPatientForm({ ...patientForm, dob: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-100"
-                />
+                <input type="date" required value={patientForm.dob} onChange={(e) => setPatientForm({ ...patientForm, dob: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Gender *</label>
-                <select
-                  value={patientForm.gender}
-                  onChange={(e) => setPatientForm({ ...patientForm, gender: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101"
-                >
+                <select value={patientForm.gender} onChange={(e) => setPatientForm({ ...patientForm, gender: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101">
                   <option value="MALE">Male</option>
                   <option value="FEMALE">Female</option>
                   <option value="OTHER">Other</option>
@@ -877,95 +1010,44 @@ function StaffDashboardContent() {
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Primary Mobile *</label>
-                <input
-                  type="tel"
-                  required
-                  pattern="[0-9]{10}"
-                  value={patientForm.mobile}
-                  onChange={(e) => setPatientForm({ ...patientForm, mobile: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101"
-                />
+                <input type="tel" required pattern="[0-9]{10}" value={patientForm.mobile} onChange={(e) => setPatientForm({ ...patientForm, mobile: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Emergency Contact Person *</label>
-                <input
-                  type="text"
-                  required
-                  value={patientForm.emergencyName}
-                  onChange={(e) => setPatientForm({ ...patientForm, emergencyName: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101"
-                />
+                <input type="text" required value={patientForm.emergencyName} onChange={(e) => setPatientForm({ ...patientForm, emergencyName: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Emergency Mobile *</label>
-                <input
-                  type="tel"
-                  required
-                  pattern="[0-9]{10}"
-                  value={patientForm.emergencyMobile}
-                  onChange={(e) => setPatientForm({ ...patientForm, emergencyMobile: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101"
-                />
+                <input type="tel" required pattern="[0-9]{10}" value={patientForm.emergencyMobile} onChange={(e) => setPatientForm({ ...patientForm, emergencyMobile: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
               </div>
 
               <div className="md:col-span-3">
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Full Residential Address *</label>
-                <input
-                  type="text"
-                  required
-                  value={patientForm.address}
-                  onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-100"
-                />
+                <input type="text" required value={patientForm.address} onChange={(e) => setPatientForm({ ...patientForm, address: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-100" />
               </div>
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Email Address</label>
-                <input
-                  type="email"
-                  value={patientForm.email}
-                  onChange={(e) => setPatientForm({ ...patientForm, email: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101"
-                />
+                <input type="email" value={patientForm.email} onChange={(e) => setPatientForm({ ...patientForm, email: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Referral Source *</label>
-                <select
-                  value={patientForm.referralSource}
-                  onChange={(e) => setPatientForm({ ...patientForm, referralSource: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101"
-                >
+                <select value={patientForm.referralSource} onChange={(e) => setPatientForm({ ...patientForm, referralSource: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101">
                   <option value="Walk-in">Walk-in</option>
                   <option value="Google">Google Search</option>
                   <option value="Social Media">Social Media</option>
                   <option value="Referral Doctor">Referral Doctor</option>
                 </select>
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1.5">Known Allergies</label>
-                <input
-                  type="text"
-                  value={patientForm.allergies}
-                  onChange={(e) => setPatientForm({ ...patientForm, allergies: e.target.value })}
-                  className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101"
-                />
+                <input type="text" value={patientForm.allergies} onChange={(e) => setPatientForm({ ...patientForm, allergies: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
               </div>
 
               {globalSettings.citizenshipIdRequired && (
                 <div>
                   <label className="block text-xs font-medium text-slate-300 mb-1.5">Citizenship/National ID Number *</label>
-                  <input
-                    type="text"
-                    required
-                    value={patientForm.govtIdNumber}
-                    onChange={(e) => setPatientForm({ ...patientForm, govtIdNumber: e.target.value })}
-                    placeholder="Nepal Citizenship Card No"
-                    className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101"
-                  />
+                  <input type="text" required value={patientForm.govtIdNumber} onChange={(e) => setPatientForm({ ...patientForm, govtIdNumber: e.target.value })} placeholder="Nepal Citizenship Card No" className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
                 </div>
               )}
             </div>
@@ -981,17 +1063,10 @@ function StaffDashboardContent() {
       {activeTab === "search" && (
         !hasAccess("register_patient") ? renderRestrictedLock("Register Patients & Edit Demographics") : (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fadeIn">
-            
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-md space-y-4 md:col-span-1">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">Search Patient Registry</h3>
               <div className="relative">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => handlePatientSearch(e.target.value)}
-                  placeholder="Search by name, MRN, mobile..."
-                  className="w-full bg-slate-955 border border-slate-800 rounded-lg pl-10 pr-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
-                />
+                <input type="text" value={searchQuery} onChange={(e) => handlePatientSearch(e.target.value)} placeholder="Search by name, MRN, mobile..." className="w-full bg-slate-955 border border-slate-800 rounded-lg pl-10 pr-4 py-2.5 text-xs text-slate-100 focus:outline-none focus:border-emerald-500" />
                 <Search className="absolute left-3 top-3 h-4 w-4 text-slate-550" />
               </div>
 
@@ -1082,8 +1157,8 @@ function StaffDashboardContent() {
                     )}
                   </div>
 
-                  <button type="submit" disabled={loading} className="py-2 px-5 bg-emerald-600 hover:bg-emerald-500 font-bold text-slate-950 rounded cursor-pointer mt-3">
-                    {loading ? "Updating..." : "Save Demographics Profile"}
+                  <button type="submit" disabled={loading} className="py-2 px-5 bg-emerald-600 hover:bg-emerald-500 font-bold text-slate-955 rounded mt-3">
+                    Save Demographics Profile
                   </button>
                 </form>
               ) : (
@@ -1092,7 +1167,7 @@ function StaffDashboardContent() {
                     <div>
                       <h2 className="text-base font-bold text-white flex items-center gap-2">
                         {selectedPatient.name}
-                        <button onClick={startEditPatient} className="text-slate-500 hover:text-emerald-455 cursor-pointer" title="Edit Patient Info">
+                        <button onClick={startEditPatient} className="text-slate-550 hover:text-emerald-455 cursor-pointer" title="Edit Patient Info">
                           <Edit3 className="h-4.5 w-4.5" />
                         </button>
                       </h2>
@@ -1108,7 +1183,7 @@ function StaffDashboardContent() {
                           setInvoiceClinicId(selectedPatient.clinicId || clinics[0]?.id || "");
                           setInvoiceBillingEntityId(clinics[0]?.billingEntityId || billingEntities[0]?.id || "");
                         }}
-                        className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-slate-955 text-xs font-bold rounded transition-all flex items-center gap-1"
+                        className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-555 text-slate-955 text-xs font-bold rounded transition-all flex items-center gap-1"
                       >
                         <Receipt className="h-3.5 w-3.5" /> Invoice Bill
                       </button>
@@ -1142,7 +1217,6 @@ function StaffDashboardContent() {
                           {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
-
                       <div>
                         <label className="block text-[10px] text-slate-400 mb-1">Consulting Doctor *</label>
                         <select required value={appForm.doctorId} onChange={(e) => setAppForm({ ...appForm, doctorId: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-slate-101">
@@ -1150,12 +1224,10 @@ function StaffDashboardContent() {
                           {doctors.filter(d => d.status === "ACTIVE").map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
                       </div>
-
                       <div>
                         <label className="block text-[10px] text-slate-400 mb-1">Appointment Slot *</label>
                         <input type="datetime-local" required value={appForm.appointmentDate} onChange={(e) => setAppForm({ ...appForm, appointmentDate: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-slate-101" />
                       </div>
-
                       <div>
                         <label className="block text-[10px] text-slate-400 mb-1">Visit Nature *</label>
                         <select value={appForm.type} onChange={(e) => setAppForm({ ...appForm, type: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-slate-101">
@@ -1189,7 +1261,7 @@ function StaffDashboardContent() {
               </div>
 
               {!selectedPatient ? (
-                <div className="p-4 bg-slate-950 border border-slate-800 text-slate-455 text-xs rounded-lg text-center">
+                <div className="p-4 bg-slate-955 border border-slate-800 text-slate-455 text-xs rounded-lg text-center">
                   Please search/select a patient in the **Patient Directory** tab first to enable billing.
                 </div>
               ) : (
@@ -1209,7 +1281,6 @@ function StaffDashboardContent() {
                         {clinics.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                       </select>
                     </div>
-
                     <div>
                       <label className="block text-slate-400 mb-1">Legal Biller Entity *</label>
                       <select required value={invoiceBillingEntityId} onChange={(e) => setInvoiceBillingEntityId(e.target.value)} className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-slate-101">
@@ -1220,7 +1291,7 @@ function StaffDashboardContent() {
                   </div>
 
                   <div className="p-4 bg-slate-950/20 border border-slate-800 rounded-lg space-y-2">
-                    <h4 className="font-bold text-slate-350">Quick Add Billing Lines</h4>
+                    <h4 className="font-bold text-slate-355">Quick Add Billing Lines</h4>
                     <div className="flex flex-wrap gap-2">
                       <button type="button" onClick={addInvoiceConsultationLine} className="py-1.5 px-3 bg-slate-800 hover:bg-slate-750 border border-slate-700 text-[10px] font-bold rounded">
                         + Consultation Fee (₹800)
@@ -1241,7 +1312,7 @@ function StaffDashboardContent() {
                   <div className="space-y-3">
                     <h4 className="font-bold text-slate-300">Invoice Items</h4>
                     {invoiceItems.length === 0 ? (
-                      <p className="text-slate-500 text-center py-4 border border-slate-850 rounded">Click shortcuts above to add items.</p>
+                      <p className="text-slate-550 text-center py-4 border border-slate-850 rounded">Click shortcuts above to add items.</p>
                     ) : (
                       <div className="space-y-2">
                         {invoiceItems.map((item, idx) => (
@@ -1275,7 +1346,6 @@ function StaffDashboardContent() {
                                 <option value="12">12% rate</option>
                                 <option value="13">13% ({globalSettings.taxType})</option>
                                 <option value="18">18% ({globalSettings.taxType})</option>
-                                <option value="28">28% rate</option>
                               </select>
                             </div>
                             <div className="col-span-1">
@@ -1299,12 +1369,11 @@ function StaffDashboardContent() {
                   </div>
 
                   <div className="border-t border-slate-800 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="p-4 bg-slate-955 border border-slate-850 rounded text-xs space-y-1">
+                    <div className="p-4 bg-slate-955 border border-slate-855 rounded text-xs space-y-1">
                       <div className="flex justify-between"><span>Subtotal:</span><span>{globalSettings.currency} {subTotal.toFixed(2)}</span></div>
                       <div className="flex justify-between"><span>{globalSettings.taxType} Tax:</span><span>{globalSettings.currency} {totalTax.toFixed(2)}</span></div>
                       <div className="flex justify-between font-bold text-white border-t border-slate-800 pt-1"><span>Payable Amount:</span><span>{globalSettings.currency} {totalAmount.toFixed(2)}</span></div>
                     </div>
-                    
                     <div className="p-4 bg-slate-955 border border-slate-850 rounded space-y-2">
                       <label className="block text-[10px] text-slate-455">Bill Discount Amount</label>
                       <input type="number" value={invoiceBillDiscount} onChange={(e) => setInvoiceBillDiscount(e.target.value)} className="w-full bg-slate-955 border border-slate-800 rounded px-2 py-1" />
@@ -1319,7 +1388,7 @@ function StaffDashboardContent() {
                     </div>
 
                     {invoicePayments.map((p, idx) => (
-                      <div key={idx} className="grid grid-cols-12 gap-2 bg-slate-955 p-3 rounded border border-slate-850 items-center">
+                      <div key={idx} className="grid grid-cols-12 gap-2 bg-slate-955 p-3 rounded border border-slate-850 items-center animate-fadeIn">
                         <input type="number" value={p.amount} onChange={(e) => updateSplitPayment(idx, "amount", e.target.value)} placeholder="Amount" className="col-span-3 bg-slate-955 border border-slate-800 rounded px-2 py-1 text-slate-101" />
                         <select value={p.paymentMode} onChange={(e) => updateSplitPayment(idx, "paymentMode", e.target.value)} className="col-span-3 bg-slate-955 border border-slate-800 rounded px-2 py-1 text-slate-101">
                           <option value="CASH">Cash (Rec Log)</option>
@@ -1342,59 +1411,11 @@ function StaffDashboardContent() {
                   </div>
 
                   <button type="submit" disabled={loading} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 font-bold text-slate-955 text-sm rounded shadow">
-                    {loading ? "Billing..." : "Finalize Invoice (Deducts FEFO Stock)"}
+                    Finalize Invoice (Deducts FEFO Stock)
                   </button>
                 </div>
               )}
             </form>
-
-            {printedInvoice && (
-              <div className="bg-white text-slate-900 p-8 rounded-xl max-w-2xl mx-auto space-y-6 border border-slate-350 font-serif">
-                <div className="flex justify-between border-b pb-4">
-                  <div>
-                    <h1 className="text-base font-bold uppercase">{printedInvoice.billingEntity.legalName}</h1>
-                    <p className="text-[10px] text-slate-500 mt-1">{printedInvoice.billingEntity.address}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="font-bold text-xs uppercase text-slate-700 block">TAX INVOICE</span>
-                    <span className="text-[10px] text-slate-500 block mt-1">Inv No: {printedInvoice.invoiceNumber}</span>
-                  </div>
-                </div>
-                
-                <div className="text-xs text-slate-650 flex justify-between">
-                  <div>Patient: <strong>{printedInvoice.patient.name}</strong> ({printedInvoice.patient.mrn})</div>
-                  <div>Clinic: {printedInvoice.clinic.name}</div>
-                </div>
-
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b font-bold bg-slate-50">
-                      <th className="py-2 px-1">Description</th>
-                      <th className="py-2 px-1 text-center">Qty</th>
-                      <th className="py-2 px-1 text-right">Price</th>
-                      <th className="py-2 px-1 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {printedInvoice.items.map((it: any) => (
-                      <tr key={it.id} className="border-b border-slate-100">
-                        <td className="py-2 px-1">{it.description}</td>
-                        <td className="py-2 px-1 text-center">{it.quantity}</td>
-                        <td className="py-2 px-1 text-right">{globalSettings.currency} {it.unitPrice.toFixed(2)}</td>
-                        <td className="py-2 px-1 text-right">{globalSettings.currency} {(it.quantity * it.unitPrice - it.discountAmount).toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="flex flex-col items-end text-xs space-y-1">
-                  <div>Gross Payable: <strong>{globalSettings.currency} {printedInvoice.totalAmount.toFixed(2)}</strong></div>
-                </div>
-                <div className="text-center print:hidden pt-2">
-                  <button onClick={() => window.print()} className="py-1.5 px-4 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs">Print invoice</button>
-                </div>
-              </div>
-            )}
           </div>
         )
       )}
@@ -1419,16 +1440,16 @@ function StaffDashboardContent() {
               <form onSubmit={handlePurchaseEntry} className="space-y-3 bg-slate-950/20 border border-slate-800 p-4 rounded-lg">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-350">Log Supplier purchase Batch</h4>
                 <div className="grid grid-cols-3 gap-3 text-xs">
-                  <select required value={purchaseForm.productId} onChange={(e) => setPurchaseForm({ ...purchaseForm, productId: e.target.value })} className="col-span-2 bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5">
+                  <select required value={purchaseForm.productId} onChange={(e) => setPurchaseForm({ ...purchaseForm, productId: e.target.value })} className="col-span-2 bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-slate-101">
                     <option value="">-- Select Product --</option>
                     {products.map(p => <option key={p.id} value={p.id}>{p.sku} • {p.name}</option>)}
                   </select>
-                  <input type="text" required placeholder="Supplier" value={purchaseForm.supplier} onChange={(e) => setPurchaseForm({ ...purchaseForm, supplier: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5" />
-                  <input type="text" required placeholder="Batch" value={purchaseForm.batchNumber} onChange={(e) => setPurchaseForm({ ...purchaseForm, batchNumber: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5" />
-                  <input type="date" required value={purchaseForm.expiryDate} onChange={(e) => setPurchaseForm({ ...purchaseForm, expiryDate: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5" />
-                  <input type="text" required placeholder="Invoice No" value={purchaseForm.invoiceNumber} onChange={(e) => setPurchaseForm({ ...purchaseForm, invoiceNumber: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5" />
-                  <input type="number" required placeholder="Qty" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({ ...purchaseForm, quantity: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5" />
-                  <input type="number" required placeholder="Cost" value={purchaseForm.cost} onChange={(e) => setPurchaseForm({ ...purchaseForm, cost: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5" />
+                  <input type="text" required placeholder="Supplier" value={purchaseForm.supplier} onChange={(e) => setPurchaseForm({ ...purchaseForm, supplier: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-slate-101" />
+                  <input type="text" required placeholder="Batch" value={purchaseForm.batchNumber} onChange={(e) => setPurchaseForm({ ...purchaseForm, batchNumber: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-slate-101" />
+                  <input type="date" required value={purchaseForm.expiryDate} onChange={(e) => setPurchaseForm({ ...purchaseForm, expiryDate: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-slate-101" />
+                  <input type="text" required placeholder="Invoice No" value={purchaseForm.invoiceNumber} onChange={(e) => setPurchaseForm({ ...purchaseForm, invoiceNumber: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-slate-101" />
+                  <input type="number" required placeholder="Qty" value={purchaseForm.quantity} onChange={(e) => setPurchaseForm({ ...purchaseForm, quantity: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-slate-101" />
+                  <input type="number" required placeholder="Cost" value={purchaseForm.cost} onChange={(e) => setPurchaseForm({ ...purchaseForm, cost: e.target.value })} className="bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-slate-101" />
                 </div>
                 <button type="submit" disabled={loading} className="py-2 px-4 bg-emerald-600 hover:bg-emerald-500 font-bold text-slate-955 rounded">
                   Log Purchase
@@ -1438,6 +1459,181 @@ function StaffDashboardContent() {
           </div>
         )
       )}
+
+      {/* 3.6 Tab: STAFF MASTERS SETUP */}
+      {activeTab === "masters" && (
+        <div className="space-y-6 animate-fadeIn">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Staff Treatment Catalog Form */}
+            {hasAccess("add_treatment_catalog") ? (
+              <form onSubmit={handleTreatmentSubmit} className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-md space-y-3.5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 border-b border-slate-800 pb-2 flex items-center justify-between font-mono">
+                  <span>{isEditingTreatment ? "Edit Treatment (Staff)" : "Add Treatment Catalog (Staff)"}</span>
+                  {isEditingTreatment && (
+                    <button type="button" onClick={cancelMasterEdits} className="text-[10px] text-rose-455 hover:underline font-bold uppercase">
+                      Cancel
+                    </button>
+                  )}
+                </h3>
+
+                <div>
+                  <label className="block text-[9px] text-slate-400 mb-0.5">Treatment Name *</label>
+                  <input type="text" required value={treatmentForm.name} onChange={(e) => setTreatmentForm({ ...treatmentForm, name: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-101" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[9px] text-slate-400 mb-0.5">Category *</label>
+                    <select value={treatmentForm.category} onChange={(e) => setTreatmentForm({ ...treatmentForm, category: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-101">
+                      <option value="HAIR">HAIR</option>
+                      <option value="SKIN">SKIN</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-slate-400 mb-0.5">Base Price ({globalSettings.currency}) *</label>
+                    <input type="number" required value={treatmentForm.basePrice} onChange={(e) => setTreatmentForm({ ...treatmentForm, basePrice: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1.5 text-xs text-slate-101" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[9px] text-slate-400 mb-0.5">Catalog Description</label>
+                  <textarea value={treatmentForm.description} onChange={(e) => setTreatmentForm({ ...treatmentForm, description: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1 text-xs text-slate-101 min-h-[60px]" />
+                </div>
+
+                <button type="submit" disabled={loading} className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 font-bold text-slate-955 text-xs rounded">
+                  {isEditingTreatment ? "Update Treatment" : "Log Treatment"}
+                </button>
+              </form>
+            ) : (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-md flex items-center justify-center min-h-[200px] text-slate-500 text-xs italic">
+                No permission to manage Treatment Catalog.
+              </div>
+            )}
+
+            {/* Staff Product Catalog Form */}
+            {hasAccess("add_product_master") ? (
+              <form onSubmit={handleProductSubmit} className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-md space-y-3.5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 border-b border-slate-800 pb-2 flex items-center justify-between font-mono">
+                  <span>{isEditingProduct ? "Edit Product SKU (Staff)" : "Add Product Master (Staff)"}</span>
+                  {isEditingProduct && (
+                    <button type="button" onClick={cancelMasterEdits} className="text-[10px] text-rose-455 hover:underline font-bold uppercase">
+                      Cancel
+                    </button>
+                  )}
+                </h3>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="col-span-2">
+                    <label className="block text-[9px] text-slate-400 mb-0.5">Product Name *</label>
+                    <input type="text" required value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1 text-slate-101" />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-slate-400 mb-0.5">SKU *</label>
+                    <input type="text" required value={productForm.sku} onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1 text-slate-101" />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-slate-400 mb-0.5">Category</label>
+                    <select value={productForm.category} onChange={(e) => setProductForm({ ...productForm, category: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1 text-slate-101">
+                      <option value="MEDICINE">MEDICINE</option>
+                      <option value="RETAIL_PRODUCT">RETAIL PRODUCT</option>
+                      <option value="CONSUMABLE">CONSUMABLE</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-slate-400 mb-0.5">Packing Unit *</label>
+                    <input type="text" required value={productForm.unit} onChange={(e) => setProductForm({ ...productForm, unit: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1 text-slate-101" />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-slate-400 mb-0.5">Purchase Cost *</label>
+                    <input type="number" required value={productForm.purchasePrice} onChange={(e) => setProductForm({ ...productForm, purchasePrice: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1 text-slate-101" />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-slate-400 mb-0.5">MRP MRN *</label>
+                    <input type="number" required value={productForm.sellingPrice} onChange={(e) => setProductForm({ ...productForm, sellingPrice: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1 text-slate-101" />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] text-slate-400 mb-0.5">TAX Rate %</label>
+                    <select value={productForm.taxRate} onChange={(e) => setProductForm({ ...productForm, taxRate: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1 text-slate-101">
+                      <option value="0">0%</option>
+                      <option value="5">5%</option>
+                      <option value="12">12%</option>
+                      <option value="13">13%</option>
+                      <option value="18">18%</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-[9px] text-slate-450 mb-0.5">Supplier Name *</label>
+                    <input type="text" required value={productForm.supplier} onChange={(e) => setProductForm({ ...productForm, supplier: e.target.value })} className="w-full bg-slate-955 border border-slate-800 rounded px-2.5 py-1 text-slate-101" />
+                  </div>
+                </div>
+
+                <button type="submit" disabled={loading} className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 font-bold text-slate-955 text-xs rounded mt-3">
+                  {isEditingProduct ? "Update Product" : "Log Product SKU"}
+                </button>
+              </form>
+            ) : (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-md flex items-center justify-center min-h-[200px] text-slate-500 text-xs italic">
+                No permission to manage Product SKU catalog.
+              </div>
+            )}
+          </div>
+
+          {/* Master Listings in Staff workspace */}
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-md grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Treatments List */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-355 border-b border-slate-850 pb-2">Treatment Catalog</h3>
+              <div className="divide-y divide-slate-850 max-h-[250px] overflow-y-auto">
+                {treatments.map((tr) => (
+                  <div key={tr.id} className="py-2.5 text-[11px] text-slate-300 flex justify-between items-center">
+                    <span>
+                      <strong>{tr.name}</strong> ({tr.category}) - <span className="font-bold text-emerald-450">{globalSettings.currency} {tr.basePrice}</span>
+                    </span>
+                    {hasAccess("add_treatment_catalog") && (
+                      <div className="flex gap-2">
+                        <button onClick={() => startEditTreatment(tr)} className="p-1 bg-slate-850 hover:bg-slate-800 text-slate-400 hover:text-emerald-450 border border-slate-750 rounded cursor-pointer">
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleStandardDelete("Treatment Catalog Item", tr.id, `/api/treatments/${tr.id}`)} className="p-1 px-2 bg-slate-850 hover:bg-rose-950 text-rose-500 border border-slate-750 rounded cursor-pointer text-[9px] font-bold">
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Products List */}
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-355 border-b border-slate-850 pb-2">Product Master SKUs</h3>
+              <div className="divide-y divide-slate-850 max-h-[250px] overflow-y-auto">
+                {products.map((pr) => (
+                  <div key={pr.id} className="py-2.5 text-[11px] text-slate-300 flex justify-between items-center">
+                    <span>
+                      <strong>{pr.name}</strong> (SKU: {pr.sku}) - <span className="text-slate-450 font-semibold">MRP: {globalSettings.currency} {pr.sellingPrice}</span>
+                    </span>
+                    {hasAccess("add_product_master") && (
+                      <div className="flex gap-2">
+                        <button onClick={() => startEditProduct(pr)} className="p-1 bg-slate-850 hover:bg-slate-800 text-slate-400 hover:text-emerald-450 border border-slate-750 rounded cursor-pointer">
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleStandardDelete("Product SKU", pr.id, `/api/products/${pr.id}`)} className="p-1 px-2 bg-slate-850 hover:bg-rose-950 text-rose-500 border border-slate-750 rounded cursor-pointer text-[9px] font-bold">
+                          Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
