@@ -15,7 +15,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { name, mobile, clinicId, permissions } = body;
+    const { name, mobile, clinicId, permissions, baseSalary } = body;
 
     const staff = await prisma.staff.findUnique({
       where: { id },
@@ -31,6 +31,7 @@ export async function PATCH(
     if (name) updateData.name = name;
     if (mobile) updateData.mobile = mobile;
     if (clinicId) updateData.clinicId = clinicId;
+    if (baseSalary !== undefined) updateData.baseSalary = baseSalary ? parseFloat(baseSalary) : null;
     if (permissions !== undefined) {
       updateData.permissions = typeof permissions === "string"
         ? permissions

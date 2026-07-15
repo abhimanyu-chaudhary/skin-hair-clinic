@@ -10,7 +10,14 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized. Doctor role required." }, { status: 401 });
     }
 
-    const doctorId = session.profileId;
+    let doctorId = session.profileId;
+    if (!doctorId) {
+      const doc = await prisma.doctor.findUnique({
+        where: { userId: session.userId },
+      });
+      if (doc) doctorId = doc.id;
+    }
+
     if (!doctorId) {
       return NextResponse.json({ error: "Doctor profile not found" }, { status: 404 });
     }

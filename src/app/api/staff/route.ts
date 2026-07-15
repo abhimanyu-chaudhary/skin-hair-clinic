@@ -38,7 +38,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { email, password, name, mobile, clinicId, permissions } = body; // permissions is an array of strings
+    const { email, password, name, mobile, clinicId, permissions, baseSalary } = body; // permissions is an array of strings
 
     if (!email || !password || !name || !mobile || !clinicId) {
       return NextResponse.json(
@@ -68,6 +68,7 @@ export async function POST(request: Request) {
           name,
           mobile,
           permissions: JSON.stringify(permissions || []),
+          baseSalary: baseSalary ? parseFloat(baseSalary) : null,
         },
       });
 

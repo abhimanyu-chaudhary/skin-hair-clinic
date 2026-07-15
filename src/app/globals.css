@@ -24,3 +24,65 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.light {
+  /* Off-white background for the page */
+  --color-slate-950: #f1f5f9; /* screen background (slate-100) */
+  --color-slate-900: #ffffff; /* container card background */
+  --color-slate-850: #f8fafc; /* selected container/inner background */
+  --color-slate-955: #f8fafc; /* input/button background */
+  
+  /* Borders */
+  --color-slate-800: #cbd5e1; /* slate-300 borders */
+  --color-slate-750: #94a3b8; /* slate-400 borders */
+  
+  /* Text colors - mapped from light grey to dark slate/black */
+  --color-slate-100: #0f172a; /* slate-900 text */
+  --color-slate-101: #1e293b; /* slate-800 text */
+  --color-slate-200: #334155; /* slate-700 text */
+  --color-slate-300: #475569; /* slate-600 text */
+  --color-slate-350: #475569;
+  --color-slate-400: #64748b; /* slate-500 text */
+  --color-slate-450: #64748b;
+  --color-slate-455: #475569;
+  --color-slate-500: #94a3b8; /* slate-400 text */
+  --color-slate-550: #94a3b8;
+}
+
+/* Light mode overrides for text visibility */
+.light .text-white {
+  color: #0f172a !important;
+}
+.light .hover\:text-white:hover {
+  color: #0f172a !important;
+}
+
+/* Keep white text on filled buttons, alerts, and badges */
+.light button,
+.light button.text-white,
+.light button .text-white,
+.light [type="submit"],
+.light [type="button"],
+.light [class*="bg-emerald"] .text-white,
+.light [class*="bg-emerald"].text-white,
+.light [class*="bg-rose"] .text-white,
+.light [class*="bg-rose"].text-white,
+.light [class*="bg-sky"] .text-white,
+.light [class*="bg-sky"].text-white,
+.light [class*="bg-indigo"] .text-white,
+.light [class*="bg-indigo"].text-white,
+.light [class*="bg-purple"] .text-white,
+.light [class*="bg-purple"].text-white,
+.light [class*="bg-teal"] .text-white,
+.light [class*="bg-teal"].text-white,
+.light [class*="bg-amber"] .text-white,
+.light [class*="bg-amber"].text-white,
+.light [class*="bg-red"] .text-white,
+.light [class*="bg-red"].text-white {
+  color: #ffffff !important;
+}
+
+/* Link active/hover in sidebar aside */
+.light aside a:hover {
+  color: #0f172a !important;
+}

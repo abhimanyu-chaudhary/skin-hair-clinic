@@ -66,6 +66,7 @@ model Staff {
   name        String
   mobile      String @unique
   permissions String // JSON string array of permissions
+  baseSalary  Float?
 
   user   User   @relation(fields: [userId], references: [id])
   clinic Clinic @relation(fields: [clinicId], references: [id])
@@ -90,6 +91,7 @@ model Doctor {
   weeklySchedule  String   // JSON containing weekly slots
   signatureUrl    String?  // File path/URL for signature
   status          String   // "ACTIVE", "INACTIVE", "ON_LEAVE"
+  baseSalary      Float?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -418,4 +420,28 @@ model AuditLog {
   timestamp   DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id])
+}
+
+model SalaryPayout {
+  id           String   @id @default(uuid())
+  employeeId   String
+  employeeType String   // "DOCTOR" | "STAFF"
+  employeeName String
+  amount       Float
+  payoutDate   DateTime @default(now())
+  periodMonth  Int
+  periodYear   Int
+  notes        String?
+  createdAt    DateTime @default(now())
+}
+
+model WholesalerBill {
+  id            String   @id @default(uuid())
+  wholesaler    String
+  invoiceNumber String
+  billDate      DateTime
+  amount        Float
+  notes         String?
+  recordedById  String
+  createdAt     DateTime @default(now())
 }

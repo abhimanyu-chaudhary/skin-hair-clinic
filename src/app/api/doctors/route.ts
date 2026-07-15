@@ -61,6 +61,7 @@ export async function POST(request: Request) {
       slotDuration,
       weeklySchedule,
       signatureUrl,
+      baseSalary,
     } = body;
 
     // Validation
@@ -137,6 +138,7 @@ export async function POST(request: Request) {
           weeklySchedule: typeof weeklySchedule === "string" ? weeklySchedule : JSON.stringify(weeklySchedule),
           signatureUrl: signatureUrl || null,
           status: "ACTIVE",
+          baseSalary: baseSalary ? parseFloat(baseSalary) : null,
         },
       });
 

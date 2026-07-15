@@ -21,7 +21,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { status, slotDuration, weeklySchedule, consultFee, followUpFee, signatureUrl } = body;
+    const { status, slotDuration, weeklySchedule, consultFee, followUpFee, signatureUrl, baseSalary } = body;
 
     const doctor = await prisma.doctor.findUnique({
       where: { id },
@@ -39,6 +39,7 @@ export async function PATCH(
     if (consultFee !== undefined) updateData.consultFee = parseFloat(consultFee);
     if (followUpFee !== undefined) updateData.followUpFee = parseFloat(followUpFee);
     if (signatureUrl !== undefined) updateData.signatureUrl = signatureUrl;
+    if (baseSalary !== undefined) updateData.baseSalary = baseSalary ? parseFloat(baseSalary) : null;
     if (weeklySchedule !== undefined) {
       updateData.weeklySchedule = typeof weeklySchedule === "string" 
         ? weeklySchedule 

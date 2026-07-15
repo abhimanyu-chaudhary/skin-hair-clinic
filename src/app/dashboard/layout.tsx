@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import Link from "next/link";
 import LogoutButton from "./LogoutButton";
+import ThemeToggle from "@/components/ThemeToggle";
 import { getGlobalSettings } from "@/lib/settings-service";
+import { prisma } from "@/lib/db";
 import {
   Activity,
   Calendar,
@@ -12,6 +14,8 @@ import {
   Receipt,
   Package,
   TrendingUp,
+  TrendingDown,
+  BarChart,
   User,
   Users,
   Building,
@@ -32,7 +36,7 @@ export default async function DashboardLayout({
   }
 
   // Sidebar link config depending on role
-  const getNavLinks = (role: string) => {
+  const getNavLinks = async (role: string, userId: string) => {
     switch (role) {
       case "SUPER_ADMIN":
         return [
@@ -41,20 +45,50 @@ export default async function DashboardLayout({
           { href: "/dashboard/admin?tab=doctors", label: "Manage Doctors", icon: Users },
           { href: "/dashboard/admin?tab=staff", label: "Manage Staff", icon: User },
           { href: "/dashboard/admin?tab=masters", label: "Masters Setup", icon: Layers },
+          { href: "/dashboard/admin?tab=outflows", label: "Expense Outflows", icon: TrendingDown },
+          { href: "/dashboard/admin?tab=reports", label: "Financial Reports", icon: BarChart },
           { href: "/dashboard/admin?tab=settings", label: "Global Settings", icon: ShieldCheck },
           { href: "/dashboard/admin?tab=security", label: "Security Settings", icon: Lock },
         ];
-      case "STAFF":
-        return [
-          { href: "/dashboard/staff?tab=checkin", label: "Reception Queue", icon: ClipboardList },
-          { href: "/dashboard/staff?tab=search", label: "Bookings & Slots", icon: Calendar },
-          { href: "/dashboard/staff?tab=billing", label: "Invoicing Ledgers", icon: Receipt },
-          { href: "/dashboard/staff?tab=inventory", label: "Inventory Stock", icon: Package },
-        ];
+      case "STAFF": {
+        const staff = await prisma.staff.findUnique({
+          where: { userId },
+        });
+        let perms: string[] = [];
+        try {
+          perms = JSON.parse(staff?.permissions || "[]");
+        } catch {}
+
+        const links = [];
+        if (perms.includes("book_appointment")) {
+          links.push({ href: "/dashboard/staff?tab=checkin", label: "Reception Queue", icon: ClipboardList });
+        }
+        if (perms.includes("register_patient")) {
+          links.push({ href: "/dashboard/staff?tab=register", label: "Patient Registration", icon: ClipboardList });
+          links.push({ href: "/dashboard/staff?tab=search", label: "Patient Directory", icon: Users });
+        }
+        if (perms.includes("generate_invoice")) {
+          links.push({ href: "/dashboard/staff?tab=billing", label: "Billing Ledger", icon: Receipt });
+        }
+        if (perms.includes("manage_inventory")) {
+          links.push({ href: "/dashboard/staff?tab=inventory", label: "Inventory Stock", icon: Package });
+        }
+        if (perms.includes("record_wholesaler_bills")) {
+          links.push({ href: "/dashboard/staff?tab=wholesaler", label: "Wholesaler Bills", icon: TrendingDown });
+        }
+        if (perms.includes("add_treatment_catalog") || perms.includes("add_product_master")) {
+          links.push({ href: "/dashboard/staff?tab=masters", label: "Masters Setup", icon: Layers });
+        }
+
+        // Always show security settings tab for staff
+        links.push({ href: "/dashboard/staff?tab=security", label: "Security Settings", icon: Lock });
+        return links;
+      }
       case "DOCTOR":
         return [
           { href: "/dashboard/doctor?tab=queue", label: "Consultation Queue", icon: ClipboardList },
           { href: "/dashboard/doctor?tab=schedule", label: "My Roster & Availability", icon: Calendar },
+          { href: "/dashboard/doctor?tab=security", label: "Security Settings", icon: Lock },
         ];
       case "PATIENT":
         return [
@@ -62,13 +96,14 @@ export default async function DashboardLayout({
           { href: "/dashboard/patient?tab=treatment", label: "Treatment Packages", icon: Sparkles },
           { href: "/dashboard/patient?tab=billing", label: "Bills & Receipts", icon: Receipt },
           { href: "/dashboard/patient?tab=book", label: "Book Slot", icon: Calendar },
+          { href: "/dashboard/patient?tab=security", label: "Security Settings", icon: Lock },
         ];
       default:
         return [];
     }
   };
 
-  const navLinks = getNavLinks(session.role);
+  const navLinks = await getNavLinks(session.role, session.userId);
   const settings = getGlobalSettings();
 
   return (
@@ -126,9 +161,12 @@ export default async function DashboardLayout({
               Skin & Hair OPD Management System
             </h3>
           </div>
-          <div className="text-[11px] text-slate-400 flex items-center gap-2">
-            <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
-            <span>Clinic Live Session</span>
+          <div className="flex items-center gap-4 text-[11px] text-slate-400">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 bg-emerald-500 rounded-full animate-pulse" />
+              <span>Clinic Live Session</span>
+            </div>
+            <ThemeToggle />
           </div>
         </header>
 

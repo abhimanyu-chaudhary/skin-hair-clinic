@@ -12,6 +12,7 @@ import {
   Printer,
   Sparkles,
   ClipboardList,
+  Lock,
 } from "lucide-react";
 
 function PatientDashboardContent() {
@@ -23,6 +24,44 @@ function PatientDashboardContent() {
   const [activeTab, setActiveTab] = useState("records");
   const [profileId, setProfileId] = useState("");
   const [chart, setChart] = useState<any>(null);
+
+  // Password reset state
+  const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" });
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+    if (passwordForm.newPassword.length < 5) {
+      setErrorMsg("Password must be at least 5 characters long.");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setErrorMsg("Passwords do not match.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const meRes = await fetch("/api/auth/me");
+      if (!meRes.ok) throw new Error("Could not verify session.");
+      const meData = await meRes.json();
+      const userId = meData.user.id;
+
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: userId, newPassword: passwordForm.newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to change password");
+      setSuccessMsg("Your login password has been changed successfully!");
+      setPasswordForm({ newPassword: "", confirmPassword: "" });
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to update password.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Global settings for dynamic currency
   const [globalSettings, setGlobalSettings] = useState<any>({
@@ -230,6 +269,7 @@ function PatientDashboardContent() {
           { id: "treatment", label: "Treatment Packages", icon: Sparkles },
           { id: "billing", label: "Bills & Receipts", icon: Receipt },
           { id: "book", label: "Book Slot", icon: Calendar },
+          { id: "security", label: "Security Settings", icon: Lock },
         ].map((tab) => {
           const Icon = tab.icon;
           return (
@@ -561,6 +601,44 @@ function PatientDashboardContent() {
           )}
 
         </div>
+      )}
+
+      {/* Tab: SECURITY SETTINGS */}
+      {activeTab === "security" && (
+        <form onSubmit={handleUpdatePassword} className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-md max-w-md mx-auto space-y-4 animate-fadeIn">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 border-b border-slate-800 pb-2 flex items-center gap-2">
+            <Lock className="h-4 w-4 text-emerald-455" /> Change Password
+          </h3>
+          <p className="text-[11px] text-slate-455">Update your personal account credentials below. Choose a secure, unique password.</p>
+          
+          <div>
+            <label className="block text-[10px] text-slate-400 mb-1">New Password *</label>
+            <input
+              type="password"
+              required
+              value={passwordForm.newPassword}
+              onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+              placeholder="Min 5 characters"
+              className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-xs text-slate-101 font-mono"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-[10px] text-slate-400 mb-1">Confirm New Password *</label>
+            <input
+              type="password"
+              required
+              value={passwordForm.confirmPassword}
+              onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+              placeholder="Repeat password"
+              className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-xs text-slate-101 font-mono"
+            />
+          </div>
+          
+          <button type="submit" disabled={loading} className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 font-bold text-slate-950 rounded transition-all cursor-pointer text-xs">
+            Change Password
+          </button>
+        </form>
       )}
 
     </div>

@@ -18,6 +18,7 @@ import {
   Edit3,
   Lock,
   Layers,
+  TrendingDown,
 } from "lucide-react";
 
 function StaffDashboardContent() {
@@ -60,6 +61,16 @@ function StaffDashboardContent() {
   const [doctors, setDoctors] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [treatments, setTreatments] = useState<any[]>([]);
+
+  // Wholesaler stock billing outflow records
+  const [wholesalerForm, setWholesalerForm] = useState({
+    wholesaler: "",
+    invoiceNumber: "",
+    billDate: new Date().toISOString().split("T")[0],
+    amount: "",
+    notes: "",
+  });
+  const [wholesalerBills, setWholesalerBills] = useState<any[]>([]);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -144,6 +155,44 @@ function StaffDashboardContent() {
     supplier: "",
   });
 
+  // Password reset state
+  const [passwordForm, setPasswordForm] = useState({ newPassword: "", confirmPassword: "" });
+
+  const handleUpdatePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+    if (passwordForm.newPassword.length < 5) {
+      setErrorMsg("Password must be at least 5 characters long.");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setErrorMsg("Passwords do not match.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const meRes = await fetch("/api/auth/me");
+      if (!meRes.ok) throw new Error("Could not verify session.");
+      const meData = await meRes.json();
+      const userId = meData.user.id;
+
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: userId, newPassword: passwordForm.newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to change password");
+      setSuccessMsg("Your login password has been changed successfully!");
+      setPasswordForm({ newPassword: "", confirmPassword: "" });
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to update password.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Sync activeTab with URL params
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -164,6 +213,9 @@ function StaffDashboardContent() {
     fetchAppointments();
     loadMasters();
     fetchSettingsAndUser();
+    if (activeTab === "wholesaler") {
+      fetchWholesalerBills();
+    }
   }, [activeTab]);
 
   const fetchSettingsAndUser = async () => {
@@ -189,6 +241,7 @@ function StaffDashboardContent() {
             "manage_inventory",
             "add_treatment_catalog",
             "add_product_master",
+            "record_wholesaler_bills",
           ]);
         } else {
           setUserPermissions(meData.user.permissions || []);
@@ -196,6 +249,48 @@ function StaffDashboardContent() {
       }
     } catch (err) {
       console.error("Failed to load settings or user permissions context:", err);
+    }
+  };
+
+  const fetchWholesalerBills = async () => {
+    try {
+      const res = await fetch("/api/wholesaler-bills");
+      if (res.ok) setWholesalerBills(await res.json());
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleWholesalerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg("");
+    setSuccessMsg("");
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/wholesaler-bills", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(wholesalerForm),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to log wholesaler bill");
+
+      setSuccessMsg("Wholesaler stock billing outflow logged successfully!");
+      setWholesalerForm({
+        wholesaler: "",
+        invoiceNumber: "",
+        billDate: new Date().toISOString().split("T")[0],
+        amount: "",
+        notes: "",
+      });
+      fetchWholesalerBills();
+      fetchStats();
+    } catch (err: any) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -792,7 +887,9 @@ function StaffDashboardContent() {
     { id: "search", label: "Patient Directory", icon: Search, show: hasAccess("register_patient") },
     { id: "billing", label: "Billing Ledger", icon: Receipt, show: hasAccess("generate_invoice") },
     { id: "inventory", label: "Inventory Stock", icon: Package, show: hasAccess("manage_inventory") },
+    { id: "wholesaler", label: "Wholesaler Bills", icon: TrendingDown, show: hasAccess("record_wholesaler_bills") },
     { id: "masters", label: "Masters Setup", icon: Layers, show: hasAccess("add_treatment_catalog") || hasAccess("add_product_master") },
+    { id: "security", label: "Security Settings", icon: Lock, show: true },
   ].filter(t => t.show);
 
   return (
@@ -1046,8 +1143,8 @@ function StaffDashboardContent() {
 
               {globalSettings.citizenshipIdRequired && (
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1.5">Citizenship/National ID Number *</label>
-                  <input type="text" required value={patientForm.govtIdNumber} onChange={(e) => setPatientForm({ ...patientForm, govtIdNumber: e.target.value })} placeholder="Nepal Citizenship Card No" className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
+                  <label className="block text-xs font-medium text-slate-300 mb-1.5">Citizenship/National ID Number (Optional)</label>
+                  <input type="text" value={patientForm.govtIdNumber} onChange={(e) => setPatientForm({ ...patientForm, govtIdNumber: e.target.value })} placeholder="Nepal Citizenship Card No" className="w-full bg-slate-955 border border-slate-800 rounded px-4 py-2.5 text-xs text-slate-101" />
                 </div>
               )}
             </div>
@@ -1459,6 +1556,102 @@ function StaffDashboardContent() {
           </div>
         )
       )}
+      {/* Tab: WHOLESALER BILLS */}
+      {activeTab === "wholesaler" && (
+        !hasAccess("record_wholesaler_bills") ? renderRestrictedLock("Record Wholesaler Billings (Outflow)") : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fadeIn text-xs">
+            <form onSubmit={handleWholesalerSubmit} className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-md md:col-span-1 space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 border-b border-slate-800 pb-2 flex items-center gap-2">
+                <TrendingDown className="h-4 w-4 text-rose-455" /> Log Wholesaler Invoice
+              </h3>
+
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">Wholesaler Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={wholesalerForm.wholesaler}
+                  onChange={(e) => setWholesalerForm({ ...wholesalerForm, wholesaler: e.target.value })}
+                  className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-slate-101 font-medium"
+                  placeholder="e.g. Kathmandu Pharma Wholesalers"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">Invoice Number *</label>
+                <input
+                  type="text"
+                  required
+                  value={wholesalerForm.invoiceNumber}
+                  onChange={(e) => setWholesalerForm({ ...wholesalerForm, invoiceNumber: e.target.value })}
+                  className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-slate-101 font-medium"
+                  placeholder="e.g. INV-98765"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">Amount Paid *</label>
+                  <input
+                    type="number"
+                    required
+                    value={wholesalerForm.amount}
+                    onChange={(e) => setWholesalerForm({ ...wholesalerForm, amount: e.target.value })}
+                    className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-slate-101 font-medium"
+                    placeholder="MRP sum"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-slate-400 mb-1">Bill Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={wholesalerForm.billDate}
+                    onChange={(e) => setWholesalerForm({ ...wholesalerForm, billDate: e.target.value })}
+                    className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-slate-101 font-medium"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] text-slate-400 mb-1">Notes / Description</label>
+                <input
+                  type="text"
+                  value={wholesalerForm.notes}
+                  onChange={(e) => setWholesalerForm({ ...wholesalerForm, notes: e.target.value })}
+                  className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-slate-101 font-medium"
+                  placeholder="Items list, delivery code..."
+                />
+              </div>
+
+              <button type="submit" disabled={loading} className="w-full py-2 bg-rose-600 hover:bg-rose-500 font-bold text-white rounded transition-all cursor-pointer">
+                Log Stock Outflow Bill
+              </button>
+            </form>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-md md:col-span-2 space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-355 border-b border-slate-850 pb-2">Logged Outflow Invoices</h3>
+              <div className="divide-y divide-slate-850 max-h-[450px] overflow-y-auto">
+                {wholesalerBills.length === 0 ? (
+                  <p className="text-slate-550 py-4 text-center">No wholesaler bills logged by staff yet.</p>
+                ) : (
+                  wholesalerBills.map((w) => (
+                    <div key={w.id} className="py-2.5 flex justify-between items-center text-slate-300">
+                      <div>
+                        <strong className="text-white">{w.wholesaler}</strong> (Invoice: {w.invoiceNumber})<br />
+                        <span className="text-[10px] text-slate-550">Recorded on: {new Date(w.billDate).toLocaleDateString()} • Notes: {w.notes || "-"}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-bold text-rose-455">-{globalSettings.currency} {w.amount.toLocaleString()}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      )}
 
       {/* 3.6 Tab: STAFF MASTERS SETUP */}
       {activeTab === "masters" && (
@@ -1632,6 +1825,44 @@ function StaffDashboardContent() {
 
           </div>
         </div>
+      )}
+
+      {/* Tab: SECURITY SETTINGS */}
+      {activeTab === "security" && (
+        <form onSubmit={handleUpdatePassword} className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-md max-w-md mx-auto space-y-4 animate-fadeIn">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 border-b border-slate-800 pb-2 flex items-center gap-2">
+            <Lock className="h-4 w-4 text-emerald-455" /> Change Password
+          </h3>
+          <p className="text-[11px] text-slate-455">Update your personal account credentials below. Choose a secure, unique password.</p>
+          
+          <div>
+            <label className="block text-[10px] text-slate-400 mb-1">New Password *</label>
+            <input
+              type="password"
+              required
+              value={passwordForm.newPassword}
+              onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+              placeholder="Min 5 characters"
+              className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-xs text-slate-101 font-mono"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-[10px] text-slate-400 mb-1">Confirm New Password *</label>
+            <input
+              type="password"
+              required
+              value={passwordForm.confirmPassword}
+              onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+              placeholder="Repeat password"
+              className="w-full bg-slate-955 border border-slate-800 rounded px-3 py-2 text-xs text-slate-101 font-mono"
+            />
+          </div>
+          
+          <button type="submit" disabled={loading} className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 font-bold text-slate-950 rounded transition-all cursor-pointer text-xs">
+            Change Password
+          </button>
+        </form>
       )}
 
     </div>

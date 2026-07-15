@@ -7,11 +7,15 @@ import bcrypt from "bcryptjs";
 export async function POST(request: Request) {
   try {
     const session = await getSession();
-    if (!session || session.role !== "SUPER_ADMIN") {
+    if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { targetUserId, newPassword } = await request.json();
+
+    if (session.role !== "SUPER_ADMIN" && targetUserId !== session.userId) {
+      return NextResponse.json({ error: "Forbidden. You can only reset your own password." }, { status: 403 });
+    }
 
     if (!targetUserId || !newPassword) {
       return NextResponse.json({ error: "userId and newPassword are required" }, { status: 400 });

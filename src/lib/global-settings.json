@@ -6,7 +6,7 @@
   "smsGateway": "Sparrow SMS",
   "smsApiKey": "sparrow-sms-demo-key",
   "smsSenderId": "SkinClinic",
-  "whatsappEnabled": true,
+  "whatsappEnabled": false,
   "telemedicineEnabled": true,
   "abhaEnabled": false,
   "citizenshipIdRequired": true,
